@@ -54,6 +54,7 @@ class SmaliParser(ModuleBase):
         self.suffix = suffix
         self.current_path = None
         self.classes = []
+        self.c = None
 
     def run(self):
         """Start main task"""
@@ -83,6 +84,7 @@ class SmaliParser(ModuleBase):
                     match_class = self.is_class(l)
                     if match_class:
                         current_class = self.extract_class(match_class)
+                        self.c = current_class
                         self.classes.append(current_class)
 
                 elif '.super' in l:
@@ -124,6 +126,14 @@ class SmaliParser(ModuleBase):
 
                         # Add call to current method
                         current_method['calls'].append(m)
+                elif 'new-instance' in l:
+                    match_new_instance = self.is_new_instance(l)
+                    if match_new_instance:
+                        m = self.extract_new_instance(match_new_instance)
+
+                        m['src'] = current_method['name']
+
+                        current_method['code_summary'].append(m)
         # Close fd
         f.close()
 
@@ -239,12 +249,31 @@ class SmaliParser(ModuleBase):
             bool: True if line contains call information, otherwise False
 
         """
-        match = re.search("invoke-\w+(?P<invoke>.*)", line)
+        match = re.search("(?P<invoke>invoke-\w+.*)", line)
         if match:
             log.debug("\t\t Found invoke: %s" % match.group('invoke'))
             return match.group('invoke')
         else:
             return None
+
+    def is_new_instance(self, line):
+        """Check if the line contains a new-instance code (new-instance)
+
+        Args:
+            line (str): Text line to be checked
+
+        Returns:
+            bool: True if line contains new-instance information, otherwise False
+
+        """
+        match = re.search("new-instance\s+(?P<new_instance>.*)$", line)
+        if match:
+            log.debug("\t\t Found invoke: %s" % match.group('new_instance'))
+            return match.group('new_instance')
+        else:
+            return None
+
+
 
     def extract_class(self, data):
         """Extract class information
@@ -296,22 +325,21 @@ class SmaliParser(ModuleBase):
             dict: Returns a property object, otherwise None
 
         """
-        prop_info = data.split(" ")
+        match = re.search('((?P<info>.*) )*(?P<name>.*):(?P<type>.*)', data)
+        if match:
 
-        # A field/property is usually saved in this form
-        #  <name>:<type>
-        prop_name_split = prop_info[-1].split(':')
+            p = {
+                # Property name
+                'name': match.group('name'),
 
-        p = {
-            # Property name
-            'name': prop_name_split[0],
+                # Property type
+                'type': match.group('type'),
 
-            # Property type
-            'type': prop_name_split[1] if len(prop_name_split) > 1 else '',
-
-            # Additional info (e.g. public static etc.)
-            'info': " ".join(prop_info[:-1])
-        }
+                # Additional info (e.g. public static etc.)
+                'info': match.group('info')
+            }
+        else:
+            p = None
 
         return p
 
@@ -385,7 +413,10 @@ class SmaliParser(ModuleBase):
             'type': " ".join(method_info[:-1]),
 
             # Calls
-            'calls': []
+            'calls': [],
+
+            # Code Summary
+            'code_summary': []
         }
 
         return m
@@ -406,21 +437,25 @@ class SmaliParser(ModuleBase):
         c_local_args = None
         c_dst_args = None
         c_ret = None
+        c_invoke_type = None
 
         # The call looks like this
         #  <destination class>) -> <method>(args)<return value>
         match = re.search(
-            '(?P<local_args>\{.*\}),\s+(?P<dst_class>.*);->' +
+            'invoke-(?P<invoke_type>.*)\s+(?P<local_args>\{.*\}),\s+((?P<dst_class>.*);|(?P<dst2_class>\[.*))->' +
             '(?P<dst_method>.*)\((?P<dst_args>.*)\)(?P<return>.*)', data)
 
         if match:
-            c_dst_class = match.group('dst_class')
+            c_dst_class = match.group('dst_class') if bool(match.group('dst_class')) else match.group('dst2_class')
             c_dst_method = match.group('dst_method')
             c_dst_args = match.group('dst_args')
             c_local_args = match.group('local_args')
             c_ret = match.group('return')
+            c_invoke_type = match.group('invoke_type')
 
         c = {
+            'invoke_type': c_invoke_type,
+
             # Destination class
             'to_class': c_dst_class,
 
@@ -435,6 +470,23 @@ class SmaliParser(ModuleBase):
 
             # Return value
             'return': c_ret
+        }
+
+        return c
+
+    def extract_new_instance(self, data):
+        c_dst_class = None
+        c_local_arg = None
+        match = re.search(
+            '(?P<local_arg>.*),\s+(?P<dst_class>.*);', data)
+        if match:
+            c_dst_class = match.group('dst_class')
+            c_local_arg = match.group('local_arg')
+
+        c = {
+          'dst_class': c_dst_class,
+          'local_arg': c_local_arg,
+          'inst': 'new-instance'
         }
 
         return c

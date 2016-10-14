@@ -603,7 +603,7 @@ class AnalyzerShell(cmd.Cmd):
             if args.search_type:
                 # Print available columns
                 if args.search_type == '?':
-                    print([c['name'] for c in t_fields])
+                    print([c['name'] for c in local_fields])
                     return
 
                 # Search

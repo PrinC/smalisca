@@ -61,6 +61,7 @@ class SmaliParserProcess(multiprocessing.Process):
     def run(self):
         """Runs the process"""
         c = 0
+        result = []
         for d in self.dirs:
             log.info("%s %d/%d Parsing %s ... " % (self.name, c, len(self.dirs), d))
 
@@ -70,9 +71,10 @@ class SmaliParserProcess(multiprocessing.Process):
 
             # Get and save results
             res = parser.get_results()
-            self.result_queue.put(res)
+            result += res
             c += 1
 
+        self.result_queue.put(result)
 
 class ConcurrentParser():
     """Implements concurrency features
