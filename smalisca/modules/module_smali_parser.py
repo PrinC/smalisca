@@ -92,6 +92,11 @@ class SmaliParser(ModuleBase):
                     if match_class_parent:
                         current_class['parent'] = match_class_parent
 
+                elif '.implements' in l:
+                    match_superinterface = self.is_superinterface(l)
+                    if match_superinterface:
+                        current_class['superinterfaces'].append(match_superinterface)
+
                 elif '.field' in l:
                     match_class_property = self.is_class_property(l)
                     if match_class_property:
@@ -186,6 +191,24 @@ class SmaliParser(ModuleBase):
         else:
             return None
 
+    def is_superinterface(self, line):
+        """Check if line contains a superinterface definition
+
+        Args:
+            line (str): Text line to be checked
+
+        Returns:
+            bool: True if line contains superinterface information, otherwise False
+
+        """
+        match = re.search("\.implements\s+(?P<superinterface>.*);", line)
+        if match:
+            log.debug("\t\tFound superinterface: %s" % match.group('superinterface'))
+            return match.group('superinterface')
+        else:
+            return None
+
+
     def is_class_property(self, line):
         """Check if line contains a field definition
 
@@ -197,7 +220,7 @@ class SmaliParser(ModuleBase):
                   otherwise False
 
         """
-        match = re.search("\.field\s+(?P<property>.*);", line)
+        match = re.search("\.field\s+(?P<property>.*:.*)", line)
         if match:
             log.debug("\t\tFound property: %s" % match.group('property'))
             return match.group('property')
@@ -310,7 +333,10 @@ class SmaliParser(ModuleBase):
             'const-strings': [],
 
             # Methods
-            'methods': []
+            'methods': [],
+
+            # superinterfaces
+            'superinterfaces': []
         }
 
         return c
@@ -325,6 +351,8 @@ class SmaliParser(ModuleBase):
             dict: Returns a property object, otherwise None
 
         """
+        if data.find('=') > 0:
+            data = data[:data.find('=')].strip()
         match = re.search('((?P<info>.*) )*(?P<name>.*):(?P<type>.*)', data)
         if match:
 
